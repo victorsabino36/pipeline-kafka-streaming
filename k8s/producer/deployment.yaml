@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: crypto-producer
+  namespace: kafka
+spec:
+  replicas: 1 # Mantém uma instância do script sempre rodando
+  selector:
+    matchLabels:
+      app: crypto-producer
+  template:
+    metadata:
+      labels:
+        app: crypto-producer
+    spec:
+      containers:
+      - name: producer
+        # Use o nome da imagem que você buildou no seu Mac
+        image: meu-producer-crypto:v2 
+        # Importante: Como a imagem é local, o K8s não deve tentar baixá-la da internet
+        imagePullPolicy: Never 
+        env:
+        - name: PYTHONUNBUFFERED
+          value: "1" # Garante que os logs do Python (print) apareçam no terminal do K8s
+        resources:
+          limits:
+            memory: "256Mi"
+            cpu: "500m"

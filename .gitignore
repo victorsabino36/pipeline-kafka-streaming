@@ -1,0 +1,18 @@
+*venv
+# Python
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Spark/Hadoop
+derby.log
+metastore_db/
+spark-warehouse/
+checkpoint/
+.ivy2/
+
+# IDEs
+.vscode/
+.idea/
+.DS_Store

@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spark-crypto-consumer
+  namespace: kafka
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: spark-consumer
+  template:
+    metadata:
+      labels:
+        app: spark-consumer
+    spec:
+      containers:
+      - name: spark-consumer
+        image: meu-spark-consumer:v4
+        imagePullPolicy: IfNotPresent
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "1.5Gi" # Limite seguro para não sufocar seu Mac
+            cpu: "1000m"
+        volumeMounts:
+        - name: checkpoint-volume
+          mountPath: /tmp/spark-checkpoints
+      volumes:
+      - name: checkpoint-volume
+        emptyDir: {} # No Docker Desktop, isso limpa ao deletar o pod. Para persistência real, usaríamos PVC.

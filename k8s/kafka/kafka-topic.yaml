@@ -1,0 +1,10 @@
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: monitor-cripto # Nome do tópico que o Python vai usar
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: crypto-cluster # Deve ser o mesmo nome do seu cluster Kafka
+spec:
+  partitions: 3 # Divide os dados em 3 partes para leitura paralela
+  replicas: 1   # Como é teste local, apenas 1 cópia é suficiente
