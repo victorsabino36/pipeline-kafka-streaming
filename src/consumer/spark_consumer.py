@@ -1,6 +1,7 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import from_json, col, explode
+from pyspark.sql.functions import from_json, col, explode, current_timestamp
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType, ArrayType
+import os
 
 # Definição do Schema para os dados da CoinGecko
 # Garante a integridade dos dados durante o processamento
@@ -13,11 +14,19 @@ schema = ArrayType(StructType([
 ]))
 
 def create_spark_session():
-    """Inicializa a sessão do Spark com suporte ao conector Kafka."""
+    """Inicializa a sessão do Spark focada em ingestão Raw para o S3."""
+    
+    # Comentário: Captura credenciais para autenticação no S3
+    aws_access_key = os.environ.get('AWS_ACCESS_KEY_ID')
+    aws_secret_key = os.environ.get('AWS_SECRET_ACCESS_KEY')
+
     return SparkSession.builder \
-        .appName("CryptoConsumerStreaming") \
-        .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
-        .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog") \
+        .appName("Crypto-Landing-Raw") \
+        .config("spark.hadoop.fs.s3a.access.key", aws_access_key) \
+        .config("spark.hadoop.fs.s3a.secret.key", aws_secret_key) \
+        .config("spark.hadoop.fs.s3a.endpoint", "s3.amazonaws.com") \
+        .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
+        .config("spark.hadoop.fs.s3a.path.style.access", "true") \
         .config("spark.sql.adaptive.enabled", "true") \
         .getOrCreate()
 
@@ -44,14 +53,23 @@ def run_streaming():
 
     # Escrita do stream para o console (ou futuramente para um banco/datalake)
     # O checkpointLocation permite que o Spark retome de onde parou em caso de falha
-    query = json_df.writeStream \
+    df_log = json_df.writeStream \
         .outputMode("append") \
         .format("console") \
         .option("truncate", "false") \
         .option("checkpointLocation", "/tmp/spark-checkpoints") \
         .start()
 
-    query.awaitTermination()
+    raw_df = df.selectExpr("CAST(value AS STRING) as payload") \
+    .withColumn("ingested_at", current_timestamp())
+
+    query = raw_df.writeStream \
+    .format("json") \
+    .option("path", "s3a://aws-data-lakehouse/raw/kafka-crypto/") \
+    .option("checkpointLocation", "s3a://aws-data-lakehouse/checkpoints/raw-crypto/") \
+    .start()
+
+    spark.streams.awaitAnyTermination()
 
 if __name__ == "__main__":
     run_streaming()

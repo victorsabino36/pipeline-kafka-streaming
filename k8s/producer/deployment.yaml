@@ -16,7 +16,7 @@ spec:
       containers:
       - name: producer
         # Use o nome da imagem que você buildou no seu Mac
-        image: meu-producer-crypto:v2 
+        image: meu-spark-producer:latest
         # Importante: Como a imagem é local, o K8s não deve tentar baixá-la da internet
         imagePullPolicy: Never 
         env:

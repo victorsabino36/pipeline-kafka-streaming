@@ -1,32 +1,30 @@
 apiVersion: kafka.strimzi.io/v1beta2
-kind: KafkaNodePool
-metadata:
-  name: kafka-nodes
-  namespace: kafka
-  labels:
-    strimzi.io/cluster: crypto-cluster
-spec:
-  replicas: 1
-  roles:
-    - broker
-    - controller
-  storage:
-    type: ephemeral
----
-apiVersion: kafka.strimzi.io/v1beta2
 kind: Kafka
 metadata:
   name: crypto-cluster
   namespace: kafka
 spec:
   kafka:
-    version: 4.0.0 # Versão suportada pelo seu operador
+    version: 4.0.0
     metadataVersion: 4.0-IV1
     listeners:
       - name: plain
         port: 9092
         type: internal
         tls: false
+      - name: external
+        port: 9094
+        type: nodeport
+        tls: false
+        configuration:
+          # Entrada inicial (Mapa do Cluster)
+          bootstrap:
+            host: 127.0.0.1
+          # Onde os dados realmente estão (Sobrescrita)
+          brokers:
+            - broker: 0
+              advertisedHost: 127.0.0.1
+              advertisedPort: 9095  # <--- O PULO DO GATO: Força o cliente a usar o segundo túnel
     config:
       offsets.topic.replication.factor: 1
       transaction.state.log.replication.factor: 1
