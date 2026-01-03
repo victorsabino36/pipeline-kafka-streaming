@@ -1,10 +1,10 @@
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import from_json, col, explode, current_timestamp
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType, ArrayType
+from pyspark.sql.streaming import StreamingQueryListener
 import os
 
-# Definição do Schema para os dados da CoinGecko
-# Garante a integridade dos dados durante o processamento
+# Comentário: Schema técnico para estruturação dos dados brutos
 schema = ArrayType(StructType([
     StructField("id", StringType(), True),
     StructField("symbol", StringType(), True),
@@ -13,63 +13,78 @@ schema = ArrayType(StructType([
     StructField("last_updated", StringType(), True)
 ]))
 
+# Comentário: Monitoramento exclusivo de persistência no S3
+class S3PersistenceLogger(StreamingQueryListener):
+    def onQueryStarted(self, event):
+        print(f"🟢 Ingestão S3 Iniciada: {event.id}")
+
+    def onQueryProgress(self, event):
+        if event.progress.numInputRows > 0:
+            # Comentário: Captura duração total do batch no Spark 3.5
+            duration = event.progress.durationMs.get("total", 0)
+            print(f"✅ [S3 COMMIT] Batch: {event.progress.batchId} | Rows: {event.progress.numInputRows} | Duration: {duration}ms")
+
+    def onQueryIdle(self, event):
+        pass
+
+    def onQueryTerminated(self, event):
+        print(f"🔴 Ingestão S3 Finalizada: {event.id}")
+
 def create_spark_session():
-    """Inicializa a sessão do Spark focada em ingestão Raw para o S3."""
-    
-    # Comentário: Captura credenciais para autenticação no S3
     aws_access_key = os.environ.get('AWS_ACCESS_KEY_ID')
     aws_secret_key = os.environ.get('AWS_SECRET_ACCESS_KEY')
 
     return SparkSession.builder \
-        .appName("Crypto-Landing-Raw") \
+        .appName("Crypto-Landing-S3") \
+        .config("spark.driver.host", "localhost") \
+        .config("spark.driver.bindAddress", "127.0.0.1") \
         .config("spark.hadoop.fs.s3a.access.key", aws_access_key) \
         .config("spark.hadoop.fs.s3a.secret.key", aws_secret_key) \
         .config("spark.hadoop.fs.s3a.endpoint", "s3.amazonaws.com") \
         .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
         .config("spark.hadoop.fs.s3a.path.style.access", "true") \
-        .config("spark.sql.adaptive.enabled", "true") \
         .getOrCreate()
-
 
 def run_streaming():
     spark = create_spark_session()
     spark.sparkContext.setLogLevel("WARN")
+    spark.streams.addListener(S3PersistenceLogger())
 
-    # Configuração da leitura do stream do Kafka
-    # Usamos o endpoint interno do Kubernetes
-    df = spark.readStream \
+    # Comentário: Ingestão de dados brutos do Kafka
+    kafka_df = spark.readStream \
         .format("kafka") \
         .option("kafka.bootstrap.servers", "crypto-cluster-kafka-bootstrap.kafka.svc:9092") \
         .option("subscribe", "monitor-cripto") \
         .option("startingOffsets", "earliest") \
         .load()
 
-    # Conversão do valor binário do Kafka para JSON estruturado
-    # O cast para String e posterior aplicação do Schema é fundamental
-    json_df = df.selectExpr("CAST(value AS STRING)") \
-        .select(from_json(col("value"), schema).alias("data")) \
-        .select(explode(col("data")).alias("crypto")) \
-        .select("crypto.*")
+    # Comentário: Transformação e enriquecimento com metadados do Kafka
+    structured_df = kafka_df.select(
+        col("topic"),
+        col("partition"),
+        col("offset"),
+        col("timestamp").alias("kafka_timestamp"),
+        from_json(col("value").cast("string"), schema).alias("parsed_data"),
+        current_timestamp().alias("ingested_at")
+    )
 
-    # Escrita do stream para o console (ou futuramente para um banco/datalake)
-    # O checkpointLocation permite que o Spark retome de onde parou em caso de falha
-    df_log = json_df.writeStream \
+    # Comentário: Aplanamento (flattening) dos dados para o S3
+    final_df = structured_df.select(
+        "*", explode(col("parsed_data")).alias("crypto")
+    ).select(
+        "topic", "partition", "offset", "kafka_timestamp", "ingested_at", "crypto.*"
+    )
+
+    # Comentário: Sink único para S3 com checkpoint persistente
+    query_s3 = final_df.writeStream \
+        .format("json") \
         .outputMode("append") \
-        .format("console") \
-        .option("truncate", "false") \
+        .option("path", "s3a://aws-data-lakehouse/raw/kafka-crypto/") \
         .option("checkpointLocation", "/tmp/spark-checkpoints") \
+        .trigger(processingTime='30 seconds') \
         .start()
 
-    raw_df = df.selectExpr("CAST(value AS STRING) as payload") \
-    .withColumn("ingested_at", current_timestamp())
-
-    query = raw_df.writeStream \
-    .format("json") \
-    .option("path", "s3a://aws-data-lakehouse/raw/kafka-crypto/") \
-    .option("checkpointLocation", "s3a://aws-data-lakehouse/checkpoints/raw-crypto/") \
-    .start()
-
-    spark.streams.awaitAnyTermination()
+    query_s3.awaitTermination()
 
 if __name__ == "__main__":
     run_streaming()

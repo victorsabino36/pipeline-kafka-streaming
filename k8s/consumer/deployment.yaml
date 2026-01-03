@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: spark-consumer
-        image: meu-spark-consumer:latest
+        image: meu-spark-consumer:v6
         imagePullPolicy: IfNotPresent
         env:
           - name: AWS_ACCESS_KEY_ID

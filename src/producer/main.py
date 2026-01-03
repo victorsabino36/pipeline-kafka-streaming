@@ -34,4 +34,4 @@ def fetch_and_send():
 if __name__ == "__main__":
     while True:
         fetch_and_send()
-        time.sleep(120) # Intervalo de 2 minutos
+        time.sleep(70) # Intervalo de 2 minutos
