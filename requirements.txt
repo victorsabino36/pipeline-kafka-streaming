@@ -1,2 +1,20 @@
-streamlit
-plotly
+# Framework Web e Dashboard
+streamlit==1.41.0
+watchdog==4.0.0
+
+# Visualização de Dados
+plotly==5.24.0
+
+# Conectividade Kafka
+kafka-python-ng==2.2.2
+
+# Manipulação de Dados
+pandas==2.2.0
+numpy==1.26.0
+
+# Conectividade Databricks e Nuvem
+databricks-sql-connector==3.6.0
+python-dotenv==1.0.1
+
+# Utilitários
+requests==2.32.0

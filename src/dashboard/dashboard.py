@@ -10,7 +10,7 @@ import uuid
 # 1. CONFIGURAÇÃO DA PÁGINA E LAYOUT
 # ==========================================
 st.set_page_config(page_title="Monitor Crypto", layout="wide")
-st.title("📊 Dashboard Streaming (Visão Separada)")
+st.title("📊 Dashboard Streaming Kafka")
 
 # Configuração das 3 colunas principais (Uma para cada moeda)
 col1, col2, col3 = st.columns(3)
@@ -103,19 +103,29 @@ try:
                     df_coin = df[df['id'] == coin_id]
                     
                     if not df_coin.empty:
-                        # 1. Atualiza Card (Métrica)
-                        last_price = df_coin['current_price'].iloc[-1]
-                        delta = 0
-                        if len(df_coin) > 1:
-                            delta = last_price - df_coin['current_price'].iloc[-2]
-                            
+                        # 1. LÓGICA DE DELTA DIÁRIO
+                        # Comentário: Identifica a data do registro mais recente
+                        latest_date = df_coin['last_updated'].dt.date.iloc[-1]
+                        
+                        # Comentário: Filtra apenas os registros do dia atual
+                        df_today = df_coin[df_coin['last_updated'].dt.date == latest_date]
+                        
+                        # Comentário: Preço de "Abertura" (primeiro do dia) e Preço Atual (último do dia)
+                        first_price_today = df_today['current_price'].iloc[0]
+                        last_price = df_today['current_price'].iloc[-1]
+                        
+                        # Comentário: Cálculo da variação absoluta e percentual
+                        delta_abs = last_price - first_price_today
+                        delta_pct = (delta_abs / first_price_today) * 100
+                        
+                        # 2. Atualiza Card (Métrica)
                         layout['metric_spot'].metric(
-                            label=coin_id.upper(), 
+                            label=f"{coin_id.upper()} (Hoje)", 
                             value=f"R$ {last_price:,.2f}",
-                            delta=f"{delta:,.2f}"
+                            delta=f"{delta_abs:,.2f} ({delta_pct:.2f}%)"
                         )
 
-                        # 2. Atualiza Gráfico (Específico da moeda)
+                        # 3. Atualiza Gráfico (Específico da moeda)
                         fig = px.line(
                             df_coin, 
                             x="last_updated", 
@@ -123,11 +133,13 @@ try:
                             title=f"Tendência: {coin_id.capitalize()}",
                             markers=True
                         )
-                        # Aplica a cor definida no layout_map e ajusta tamanho
+                        
+                        # Comentário: Ajuste de layout e cores conforme padrão do Streamlit 2026
                         fig.update_traces(line_color=layout['color'])
                         fig.update_layout(height=350, margin=dict(l=20, r=20, t=40, b=20))
                         
-                        layout['chart_spot'].plotly_chart(fig, use_container_width=True)
+                        # Comentário: Uso do parâmetro 'width' atualizado para evitar warnings
+                        layout['chart_spot'].plotly_chart(fig, width="stretch")
 
         time.sleep(0.1)
 
